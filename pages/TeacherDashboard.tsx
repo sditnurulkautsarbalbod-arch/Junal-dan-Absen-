@@ -418,7 +418,7 @@ const TeacherDashboard: React.FC<TeacherProps> = ({ user, onLogout }) => {
                           {classes.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                       </NeoSelect>
                   </div>
-                  <NeoInput label="Jam Ke (ex: 1-2)" value={jurnalForm.jam} onChange={e => setJurnalForm({...jurnalForm, jam: e.target.value})} placeholder="Contoh: 1-3" required />
+                  <NeoInput label="Jam Ke (ex: 1-3)" value={jurnalForm.jam} onChange={e => setJurnalForm({...jurnalForm, jam: e.target.value})} placeholder="Contoh: 1-3" required />
                   <div className="mb-6">
                       <label className="block font-black mb-2 uppercase text-xs tracking-widest bg-black text-white inline-block px-2 py-1 transform -rotate-1">Materi Pembelajaran</label>
                       <textarea className="w-full bg-gray-50 border-3 border-black p-3 font-bold text-lg focus:outline-none focus:bg-neo-bg focus:shadow-neo-sm h-32" value={jurnalForm.materi} onChange={e => setJurnalForm({...jurnalForm, materi: e.target.value})} placeholder="ISI MATERI..." required />
