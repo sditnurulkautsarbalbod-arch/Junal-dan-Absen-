@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { NeoButton, NeoCard, NeoInput, NeoSelect, NeoTable, NeoModal, NeoBottomNav, NeoConfirmModal, IconLoading } from '../components/NeoUI';
@@ -195,12 +196,24 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
       e.preventDefault();
       const form = e.target as HTMLFormElement;
       const formData = new FormData(form);
+      const usernameInput = formData.get('username') as string;
       const plainPassword = formData.get('password') as string;
+      
       const password = plainPassword ? bcrypt.hashSync(plainPassword, 10) : editingUser?.password;
+      
+      // PERBAIKAN: Gunakan username sebagai ID jika user baru, agar tidak jadi angka timestamp
+      const newId = editingUser ? editingUser.id : usernameInput;
+
+      // Cek duplikasi ID jika user baru
+      if (!editingUser && users.some(u => u.id === newId)) {
+        alert("Username/ID ini sudah digunakan! Silakan pilih yang lain.");
+        return;
+      }
+
       const userData: User = {
-          id: editingUser ? editingUser.id : Date.now().toString(),
+          id: newId, 
           fullName: formData.get('fullName') as string,
-          username: formData.get('username') as string,
+          username: usernameInput,
           password: password,
           role: formData.get('role') as 'admin' | 'guru'
       };
@@ -288,7 +301,7 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                       {paginatedUsers.map(u => (
                           <tr key={u.id} className="border-b-2 border-black hover:bg-gray-50">
                               <td className="p-3 border-r-2 border-black font-bold capitalize">{u.fullName.toLowerCase()}</td>
-                              <td className="p-3 border-r-2 border-black">{u.username}</td>
+                              <td className="p-3 border-r-2 border-black font-mono">{u.username}</td>
                               <td className="p-3 border-r-2 border-black uppercase text-xs font-black">{u.role}</td>
                               <td className="p-3 flex gap-2">
                                   <button onClick={() => { setEditingUser(u); setUserModalOpen(true); }} className="text-blue-600 hover:text-blue-800"><IconEdit /></button>
