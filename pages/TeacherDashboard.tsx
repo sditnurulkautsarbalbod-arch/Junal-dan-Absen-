@@ -256,16 +256,19 @@ const TeacherDashboard: React.FC<TeacherProps> = ({ user, onLogout }) => {
       });
       showToast("Jurnal Berhasil Disimpan!");
       localStorage.removeItem('autosave_jurnal');
+      
+      // RESET FORM, but KEEP Attendance Data (Sakit, Izin, TK) and Date/Class
+      // This ensures if teacher inputs next hour for same day, the attendance stats persist
       setJurnalForm({
           id: '',
-          date: new Date().toISOString().split('T')[0],
-          class: jurnalForm.class, 
+          date: jurnalForm.date, // Keep date
+          class: jurnalForm.class, // Keep class
           jam: '',
           materi: '',
           aktivitas: '',
-          izin: 0,
-          sakit: 0,
-          tanpaKet: 0
+          izin: jurnalForm.izin, // Keep existing calc
+          sakit: jurnalForm.sakit, // Keep existing calc
+          tanpaKet: jurnalForm.tanpaKet // Keep existing calc
       });
   };
 
@@ -389,6 +392,66 @@ const TeacherDashboard: React.FC<TeacherProps> = ({ user, onLogout }) => {
       XLSX.writeFile(workbook, "rekap_absensi.xlsx");
   };
 
+  const handleExportHistoryPDF = (data: Journal[]) => {
+      const doc = new jsPDF('landscape');
+      doc.text("RIWAYAT JURNAL MENGAJAR", 14, 20);
+      doc.text(`Guru: ${user.fullName}`, 14, 28);
+      
+      let periodeStr = "";
+      if (jurnalListFilter.type === 'harian') periodeStr = jurnalListFilter.date;
+      else if (jurnalListFilter.type === 'bulanan') periodeStr = jurnalListFilter.month;
+      else periodeStr = `Bulan ${jurnalListFilter.month} Minggu ke-${jurnalListFilter.week}`;
+      doc.text(`Periode: ${periodeStr}`, 14, 36);
+
+      const tableData = data.map((j, i) => [
+          i + 1,
+          formatDate(j.date),
+          j.class,
+          j.jam,
+          j.materi,
+          j.aktivitas,
+          j.izin,
+          j.sakit,
+          j.tanpaKet
+      ]);
+
+      autoTable(doc, {
+          head: [['No', 'Tanggal', 'Kelas', 'Jam', 'Materi', 'Aktivitas', 'I', 'S', 'TK']],
+          body: tableData,
+          startY: 45,
+          styles: { fontSize: 8, cellPadding: 1, overflow: 'linebreak' },
+          columnStyles: {
+              0: { cellWidth: 8 },  
+              1: { cellWidth: 20 }, 
+              2: { cellWidth: 15 }, 
+              3: { cellWidth: 12 }, 
+              4: { cellWidth: 60 }, 
+              5: { cellWidth: 100 }, // Aktivitas lebih lebar
+              6: { cellWidth: 8, halign: 'center' }, 
+              7: { cellWidth: 8, halign: 'center' }, 
+              8: { cellWidth: 8, halign: 'center' }, 
+          }
+      });
+      doc.save("riwayat_jurnal.pdf");
+  };
+
+  const handleExportHistoryExcel = (data: Journal[]) => {
+      const worksheet = XLSX.utils.json_to_sheet(data.map((j, i) => ({
+          No: i + 1,
+          Tanggal: formatDate(j.date),
+          Kelas: j.class,
+          Jam: j.jam,
+          Materi: j.materi,
+          Aktivitas: j.aktivitas,
+          Izin: j.izin,
+          Sakit: j.sakit,
+          TK: j.tanpaKet
+      })));
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Riwayat Jurnal");
+      XLSX.writeFile(workbook, "riwayat_jurnal.xlsx");
+  };
+
   const renderInputJurnal = () => {
       const relatedAbsence = attendance.find(a => 
         standardizeDate(a.date) === standardizeDate(jurnalForm.date!) && 
@@ -496,7 +559,7 @@ const TeacherDashboard: React.FC<TeacherProps> = ({ user, onLogout }) => {
               </div>
           </NeoCard>
           <div className="mt-8 border-t-4 border-black pt-8">
-             <div className="bg-neo-pink border-3 border-black p-3 mb-6 transform -rotate-1 inline-block shadow-neo"><h3 className="text-xl font-black uppercase text-white tracking-widest">Riwayat Input Absensi Saya</h3></div>
+             <div className="bg-neo-pink border-3 border-black p-3 mb-6 transform -rotate-1 inline-block shadow-neo"><h3 className="text-xl font-black uppercase text-white tracking-widest">Riwayat Input Absensi</h3></div>
              <NeoTable headers={['Tanggal', 'Kelas', 'H', 'I', 'S', 'TK', 'Aksi']}>
                 {recentAttendance.map(r => {
                    let h = 0, i = 0, s = 0, tk = 0;
@@ -643,6 +706,10 @@ const TeacherDashboard: React.FC<TeacherProps> = ({ user, onLogout }) => {
                               </NeoSelect>
                           </div>
                       )}
+                      <div className="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
+                           <NeoButton variant="success" className="px-3 py-2 text-sm" onClick={() => handleExportHistoryPDF(filtered)}>PDF</NeoButton>
+                           <NeoButton variant="secondary" className="px-3 py-2 text-sm bg-neo-yellow" onClick={() => handleExportHistoryExcel(filtered)}>Excel</NeoButton>
+                      </div>
                   </div>
                   <NeoTable headers={['Tanggal', 'Kelas', 'Jam', 'Materi', 'Aktivitas', 'I', 'S', 'TK', 'Aksi']}>
                       {paginatedData.map((j) => (

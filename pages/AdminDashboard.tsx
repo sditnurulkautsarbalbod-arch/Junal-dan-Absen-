@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useData } from '../context/DataContext';
 import { NeoButton, NeoCard, NeoInput, NeoSelect, NeoTable, NeoModal, NeoBottomNav, NeoConfirmModal, IconLoading } from '../components/NeoUI';
-import { User, Class, Student, SystemSettings } from '../types';
+import { User, Class, Student, SystemSettings, Journal } from '../types';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -76,6 +76,12 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   const userPerPage = 10;
   const [studentPage, setStudentPage] = useState(1);
   const studentPerPage = 10;
+  
+  // -- Pagination for Jurnal --
+  const [statsPage, setStatsPage] = useState(1);
+  const statsPerPage = 10;
+  const [journalPage, setJournalPage] = useState(1);
+  const journalPerPage = 10;
 
   // -- Filters --
   const [jurnalFilter, setJurnalFilter] = useState({ 
@@ -85,6 +91,13 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
       week: '1',
       teacher: '' 
   });
+
+  // Reset pagination when filters change
+  useEffect(() => {
+    setStatsPage(1);
+    setJournalPage(1);
+  }, [jurnalFilter]);
+
   const [absenFilter, setAbsenFilter] = useState({ 
       type: 'harian', 
       class: '', 
@@ -155,6 +168,67 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Statistik");
       XLSX.writeFile(workbook, "statistik_mengajar.xlsx");
+  };
+
+  const handleExportDetailPDF = (data: Journal[]) => {
+    const doc = new jsPDF('landscape');
+    doc.text("DETAIL JURNAL MENGAJAR", 14, 20);
+    let periodeStr = "";
+    if (jurnalFilter.type === 'harian') periodeStr = jurnalFilter.date;
+    else if (jurnalFilter.type === 'bulanan') periodeStr = jurnalFilter.month;
+    else periodeStr = `Bulan ${jurnalFilter.month} Minggu ke-${jurnalFilter.week}`;
+    doc.text(`Periode: ${periodeStr}`, 14, 30);
+    
+    const tableData = data.map((j, i) => [
+        i + 1,
+        formatDate(j.date),
+        j.teacherName,
+        j.class,
+        j.jam,
+        j.materi,
+        j.aktivitas,
+        j.izin,
+        j.sakit,
+        j.tanpaKet
+    ]);
+
+    autoTable(doc, {
+        head: [['No', 'Tanggal', 'Guru', 'Kelas', 'Jam', 'Materi', 'Aktivitas', 'I', 'S', 'TK']],
+        body: tableData,
+        startY: 40,
+        styles: { fontSize: 8, cellPadding: 1, overflow: 'linebreak' },
+        columnStyles: {
+            0: { cellWidth: 8 },  // No
+            1: { cellWidth: 20 }, // Tanggal
+            2: { cellWidth: 30 }, // Guru
+            3: { cellWidth: 15 }, // Kelas
+            4: { cellWidth: 12 }, // Jam
+            5: { cellWidth: 60 }, // Materi
+            6: { cellWidth: 90 }, // Aktivitas (Dibuat paling lebar)
+            7: { cellWidth: 8, halign: 'center' }, // I
+            8: { cellWidth: 8, halign: 'center' }, // S
+            9: { cellWidth: 8, halign: 'center' }, // TK
+        }
+    });
+    doc.save("detail_jurnal.pdf");
+  };
+
+  const handleExportDetailExcel = (data: Journal[]) => {
+      const worksheet = XLSX.utils.json_to_sheet(data.map((j, i) => ({
+          No: i + 1,
+          Tanggal: formatDate(j.date),
+          Guru: j.teacherName,
+          Kelas: j.class,
+          Jam: j.jam,
+          Materi: j.materi,
+          Aktivitas: j.aktivitas,
+          Izin: j.izin,
+          Sakit: j.sakit,
+          TK: j.tanpaKet
+      })));
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Detail Jurnal");
+      XLSX.writeFile(workbook, "detail_jurnal.xlsx");
   };
 
   const handleExportAbsenPDF = (data: any[]) => {
@@ -412,61 +486,98 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
       });
       const stats = Array.from(statsMap.entries()).map(([teacherName, totalJam]) => ({ teacherName, totalJam }));
 
+      // Pagination for Stats
+      const totalStatsPages = Math.ceil(stats.length / statsPerPage);
+      const paginatedStats = stats.slice((statsPage - 1) * statsPerPage, statsPage * statsPerPage);
+
+      // Pagination for Journals
+      const totalJournalPages = Math.ceil(filtered.length / journalPerPage);
+      const paginatedJournals = filtered.slice((journalPage - 1) * journalPerPage, journalPage * journalPerPage);
+
       return (
           <div className="space-y-8">
-              <NeoCard title="Statistik Jam Mengajar">
-                  <div className="flex flex-wrap gap-4 items-end mb-6">
-                      <div className="w-full md:w-40">
-                          <NeoSelect label="Tipe Filter" value={jurnalFilter.type} onChange={e => setJurnalFilter({...jurnalFilter, type: e.target.value})} className="mb-0">
-                              <option value="harian">Harian</option>
-                              <option value="mingguan">Mingguan</option>
-                              <option value="bulanan">Bulanan</option>
+              {/* GLOBAL FILTER FOR BOTH TABLES */}
+              <div className="bg-white border-4 border-black p-4 shadow-neo flex flex-wrap gap-4 items-end">
+                  <div className="w-full md:w-32">
+                      <NeoSelect label="Tipe Filter" value={jurnalFilter.type} onChange={e => setJurnalFilter({...jurnalFilter, type: e.target.value})} className="mb-0">
+                          <option value="harian">Harian</option>
+                          <option value="mingguan">Mingguan</option>
+                          <option value="bulanan">Bulanan</option>
+                      </NeoSelect>
+                  </div>
+                  <div className="w-full md:w-40">
+                      {jurnalFilter.type === 'harian' ? (
+                          <NeoInput type="date" label="Tanggal" value={jurnalFilter.date} onChange={e => setJurnalFilter({...jurnalFilter, date: e.target.value})} className="mb-0" />
+                      ) : (
+                          <NeoInput type="month" label="Bulan" value={jurnalFilter.month} onChange={e => setJurnalFilter({...jurnalFilter, month: e.target.value})} className="mb-0" />
+                      )}
+                  </div>
+                  {jurnalFilter.type === 'mingguan' && (
+                      <div className="w-full md:w-32">
+                          <NeoSelect label="Minggu Ke" value={jurnalFilter.week} onChange={e => setJurnalFilter({...jurnalFilter, week: e.target.value})} className="mb-0">
+                              {[1,2,3,4,5].map(i => <option key={i} value={i.toString()}>{i}</option>)}
                           </NeoSelect>
                       </div>
-                      <div className="w-full md:w-48">
-                          {jurnalFilter.type === 'harian' ? (
-                              <NeoInput type="date" label="Tanggal" value={jurnalFilter.date} onChange={e => setJurnalFilter({...jurnalFilter, date: e.target.value})} className="mb-0" />
-                          ) : (
-                              <NeoInput type="month" label="Bulan" value={jurnalFilter.month} onChange={e => setJurnalFilter({...jurnalFilter, month: e.target.value})} className="mb-0" />
-                          )}
-                      </div>
-                      {jurnalFilter.type === 'mingguan' && (
-                          <div className="w-full md:w-40">
-                              <NeoSelect label="Minggu Ke" value={jurnalFilter.week} onChange={e => setJurnalFilter({...jurnalFilter, week: e.target.value})} className="mb-0">
-                                  {[1,2,3,4,5].map(i => <option key={i} value={i.toString()}>{i}</option>)}
-                              </NeoSelect>
-                          </div>
-                      )}
-                      <div className="flex gap-2">
-                           <NeoButton variant="success" className="px-3 py-2 text-sm" onClick={() => handleExportStatsPDF(stats)}>PDF</NeoButton>
-                           <NeoButton variant="secondary" className="px-3 py-2 text-sm bg-neo-yellow" onClick={() => handleExportStatsExcel(stats)}>Excel</NeoButton>
-                      </div>
+                  )}
+                  <div className="w-full md:w-48">
+                        <NeoSelect label="Filter Guru" value={jurnalFilter.teacher} onChange={e => setJurnalFilter({...jurnalFilter, teacher: e.target.value})} className="mb-0">
+                            <option value="">Semua Guru</option>
+                            {users.filter(u => u.role === 'guru').map(u => (
+                                <option key={u.id} value={u.username}>{u.fullName}</option>
+                            ))}
+                        </NeoSelect>
+                  </div>
+              </div>
+
+              <NeoCard title="Statistik Jam Mengajar">
+                   <div className="mb-4 flex justify-end gap-2">
+                       <NeoButton variant="success" className="px-3 py-2 text-sm" onClick={() => handleExportStatsPDF(stats)}>PDF</NeoButton>
+                       <NeoButton variant="secondary" className="px-3 py-2 text-sm bg-neo-yellow" onClick={() => handleExportStatsExcel(stats)}>Excel</NeoButton>
                   </div>
                   <NeoTable headers={['Nama Guru', 'Total Jam Mengajar']}>
-                      {stats.map((s, i) => (
+                      {paginatedStats.map((s, i) => (
                           <tr key={i} className="border-b-2 border-black">
                               <td className="p-3 border-r-2 border-black font-bold capitalize">{s.teacherName.toLowerCase()}</td>
                               <td className="p-3 border-r-2 border-black font-black text-center">{s.totalJam} Jam</td>
                           </tr>
                       ))}
-                      {stats.length === 0 && <tr><td colSpan={2} className="p-4 text-center text-gray-400 font-bold">Tidak ada data.</td></tr>}
+                      {paginatedStats.length === 0 && <tr><td colSpan={2} className="p-4 text-center text-gray-400 font-bold">Tidak ada data.</td></tr>}
                   </NeoTable>
+                  {/* Pagination Stats */}
+                  <div className="flex justify-between items-center mt-4">
+                      <button disabled={statsPage === 1} onClick={() => setStatsPage(p => p - 1)} className="font-bold disabled:opacity-50">Prev</button>
+                      <span className="font-black text-sm">Page {statsPage}/{totalStatsPages || 1}</span>
+                      <button disabled={statsPage >= totalStatsPages} onClick={() => setStatsPage(p => p + 1)} className="font-bold disabled:opacity-50">Next</button>
+                  </div>
               </NeoCard>
               
               <NeoCard title="Detail Jurnal">
-                   <NeoTable headers={['Tanggal', 'Guru', 'Kelas', 'Jam', 'Materi', 'Aktivitas']}>
-                       {filtered.slice(0, 50).map(j => (
+                   <div className="mb-4 flex justify-end gap-2">
+                       <NeoButton variant="success" className="px-3 py-2 text-sm" onClick={() => handleExportDetailPDF(filtered)}>PDF</NeoButton>
+                       <NeoButton variant="secondary" className="px-3 py-2 text-sm bg-neo-yellow" onClick={() => handleExportDetailExcel(filtered)}>Excel</NeoButton>
+                   </div>
+                   <NeoTable headers={['Tanggal', 'Guru', 'Kelas', 'Jam', 'Materi', 'Aktivitas', 'I', 'S', 'TK']}>
+                       {paginatedJournals.map(j => (
                            <tr key={j.id} className="border-b-2 border-black hover:bg-yellow-50 text-sm">
                                <td className="p-3 border-r-2 border-black whitespace-nowrap">{formatDate(j.date)}</td>
                                <td className="p-3 border-r-2 border-black font-bold capitalize">{j.teacherName.toLowerCase()}</td>
                                <td className="p-3 border-r-2 border-black text-center">{j.class}</td>
                                <td className="p-3 border-r-2 border-black text-center">{j.jam}</td>
                                <td className="p-3 border-r-2 border-black truncate max-w-[150px]">{j.materi}</td>
-                               <td className="p-3 truncate max-w-[150px]">{j.aktivitas}</td>
+                               <td className="p-3 border-r-2 border-black truncate max-w-[150px]">{j.aktivitas}</td>
+                               <td className="p-3 border-r-2 border-black text-center text-blue-600 font-bold">{j.izin || 0}</td>
+                               <td className="p-3 border-r-2 border-black text-center text-orange-600 font-bold">{j.sakit || 0}</td>
+                               <td className="p-3 text-center text-red-600 font-bold">{j.tanpaKet || 0}</td>
                            </tr>
                        ))}
-                       {filtered.length === 0 && <tr><td colSpan={6} className="p-4 text-center text-gray-400 font-bold">Tidak ada data.</td></tr>}
+                       {paginatedJournals.length === 0 && <tr><td colSpan={9} className="p-4 text-center text-gray-400 font-bold">Tidak ada data.</td></tr>}
                    </NeoTable>
+                   {/* Pagination Detail Jurnal */}
+                   <div className="flex justify-between items-center mt-4">
+                      <button disabled={journalPage === 1} onClick={() => setJournalPage(p => p - 1)} className="font-bold disabled:opacity-50">Prev</button>
+                      <span className="font-black text-sm">Page {journalPage}/{totalJournalPages || 1}</span>
+                      <button disabled={journalPage >= totalJournalPages} onClick={() => setJournalPage(p => p + 1)} className="font-bold disabled:opacity-50">Next</button>
+                   </div>
               </NeoCard>
           </div>
       );
