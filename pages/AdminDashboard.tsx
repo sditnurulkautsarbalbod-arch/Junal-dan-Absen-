@@ -522,7 +522,9 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                   <div className="w-full md:w-48">
                         <NeoSelect label="Filter Guru" value={jurnalFilter.teacher} onChange={e => setJurnalFilter({...jurnalFilter, teacher: e.target.value})} className="mb-0">
                             <option value="">Semua Guru</option>
-                            {users.filter(u => u.role === 'guru').map(u => (
+                            {users.filter(u => u.role === 'guru')
+                                  .sort((a, b) => a.fullName.localeCompare(b.fullName))
+                                  .map(u => (
                                 <option key={u.id} value={u.username}>{u.fullName}</option>
                             ))}
                         </NeoSelect>
