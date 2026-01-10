@@ -479,12 +479,22 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
           return true;
       });
 
+      // Sort filtered journals by teacher name
+      filtered.sort((a, b) => {
+          const nameComparison = a.teacherName.localeCompare(b.teacherName);
+          if (nameComparison !== 0) return nameComparison;
+          return a.date.localeCompare(b.date);
+      });
+
       const statsMap = new Map<string, number>();
       filtered.forEach(j => {
           const current = statsMap.get(j.teacherName) || 0;
           statsMap.set(j.teacherName, current + calculateJam(j.jam));
       });
-      const stats = Array.from(statsMap.entries()).map(([teacherName, totalJam]) => ({ teacherName, totalJam }));
+      // Sort stats alphabetically
+      const stats = Array.from(statsMap.entries())
+        .map(([teacherName, totalJam]) => ({ teacherName, totalJam }))
+        .sort((a, b) => a.teacherName.localeCompare(b.teacherName));
 
       // Pagination for Stats
       const totalStatsPages = Math.ceil(stats.length / statsPerPage);
@@ -595,9 +605,20 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         return true;
     });
 
+    // Sorted Classes for Dropdown (1A, 1B, 2A...)
+    const sortedClassesDropdown = [...classes].sort((a, b) => 
+        a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+    );
+
     const studentsInClass = students
         .filter(s => absenFilter.class ? s.class === absenFilter.class : true)
-        .sort((a, b) => a.name.localeCompare(b.name));
+        .sort((a, b) => {
+            // Sort by Class first (Natural Order)
+            const classCompare = a.class.localeCompare(b.class, undefined, { numeric: true, sensitivity: 'base' });
+            if (classCompare !== 0) return classCompare;
+            // Then by Name (Alphabetical)
+            return a.name.localeCompare(b.name);
+        });
 
     const studentStats = studentsInClass.map(s => {
         let h = 0, i = 0, sk = 0, tk = 0;
@@ -612,6 +633,12 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
         const percentage = total > 0 ? ((h / total) * 100).toFixed(1) : '0.0';
         return { ...s, h, i, sk, tk, percentage };
     });
+
+    // Calculate Grand Totals
+    const totalH = studentStats.reduce((acc, curr) => acc + curr.h, 0);
+    const totalI = studentStats.reduce((acc, curr) => acc + curr.i, 0);
+    const totalS = studentStats.reduce((acc, curr) => acc + curr.sk, 0);
+    const totalTK = studentStats.reduce((acc, curr) => acc + curr.tk, 0);
 
     const totalPages = Math.ceil(studentStats.length / absenItemsPerPage);
     const paginatedStudents = studentStats.slice((absenPage - 1) * absenItemsPerPage, absenPage * absenItemsPerPage);
@@ -629,7 +656,7 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                 <div className="w-[180px]">
                      <NeoSelect value={absenFilter.class} onChange={e => { setAbsenFilter({...absenFilter, class: e.target.value}); setAbsenPage(1); }} className="mb-0">
                         <option value="">Semua Kelas</option>
-                        {classes.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                        {sortedClassesDropdown.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                     </NeoSelect>
                 </div>
                 {absenFilter.type === 'harian' && (
@@ -654,6 +681,27 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
                     </div>
                 )}
             </div>
+            
+            {/* Total Stats Summary */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div className="bg-neo-green border-3 border-black p-3 shadow-neo flex flex-col items-center justify-center transform -rotate-1">
+                    <span className="text-xs font-black uppercase tracking-widest text-black">Total Hadir</span>
+                    <span className="text-3xl font-black text-black">{totalH}</span>
+                </div>
+                <div className="bg-neo-blue border-3 border-black p-3 shadow-neo flex flex-col items-center justify-center transform rotate-1">
+                    <span className="text-xs font-black uppercase tracking-widest text-black">Total Izin</span>
+                    <span className="text-3xl font-black text-black">{totalI}</span>
+                </div>
+                <div className="bg-neo-yellow border-3 border-black p-3 shadow-neo flex flex-col items-center justify-center transform -rotate-1">
+                    <span className="text-xs font-black uppercase tracking-widest text-black">Total Sakit</span>
+                    <span className="text-3xl font-black text-black">{totalS}</span>
+                </div>
+                <div className="bg-neo-orange border-3 border-black p-3 shadow-neo flex flex-col items-center justify-center transform rotate-1">
+                    <span className="text-xs font-black uppercase tracking-widest text-white">Tanpa Ket.</span>
+                    <span className="text-3xl font-black text-white">{totalTK}</span>
+                </div>
+            </div>
+
             <div className="flex gap-2 mb-4">
                  <NeoButton variant="success" onClick={() => handleExportAbsenPDF(studentStats)} className="px-4 py-2 text-sm">PDF</NeoButton>
                  <NeoButton variant="secondary" className="bg-neo-yellow px-4 py-2 text-sm" onClick={() => handleExportAbsenExcel(studentStats)}>Excel</NeoButton>
