@@ -107,6 +107,7 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
       endDate: new Date().toISOString().split('T')[0]
   });
   const [absenPage, setAbsenPage] = useState(1);
+  const [detailAbsenPage, setDetailAbsenPage] = useState(1); // New pagination for Detail Absence
   const absenItemsPerPage = 10;
 
   // --- MOVE HOOKS TO TOP LEVEL (FIX ERROR #310) ---
@@ -264,6 +265,44 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Absensi");
       XLSX.writeFile(workbook, "rekap_absensi.xlsx");
+  };
+
+  const handleExportDetailAbsenPDF = (data: any[]) => {
+    const doc = new jsPDF();
+    let periodeStr = "";
+    if (absenFilter.type === 'harian') periodeStr = formatDate(absenFilter.date);
+    else if (absenFilter.type === 'bulanan') periodeStr = absenFilter.month;
+    else periodeStr = `${formatDate(absenFilter.startDate)} s/d ${formatDate(absenFilter.endDate)}`;
+    
+    doc.text(`DETAIL KETIDAKHADIRAN SISWA`, 14, 20);
+    doc.setFontSize(10);
+    doc.text(`Periode: ${periodeStr}`, 14, 28);
+    if(absenFilter.class) doc.text(`Kelas: ${absenFilter.class}`, 14, 34);
+
+    const tableData = data.map((d, i) => [
+        i + 1, d.nisn, d.name, d.class, d.status === 'tanpaKet' ? 'TK' : d.status.toUpperCase(), formatDate(d.date)
+    ]);
+
+    autoTable(doc, {
+        head: [['No', 'NISN', 'Nama', 'Kelas', 'Status', 'Tanggal']],
+        body: tableData,
+        startY: 40,
+    });
+    doc.save("detail_ketidakhadiran.pdf");
+  };
+
+  const handleExportDetailAbsenExcel = (data: any[]) => {
+      const worksheet = XLSX.utils.json_to_sheet(data.map((d, i) => ({
+          No: i + 1,
+          NISN: d.nisn,
+          Nama: d.name,
+          Kelas: d.class,
+          Status: d.status === 'tanpaKet' ? 'TK' : d.status.toUpperCase(),
+          Tanggal: formatDate(d.date)
+      })));
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Detail Ketidakhadiran");
+      XLSX.writeFile(workbook, "detail_ketidakhadiran.xlsx");
   };
 
   const handleUserSubmit = async (e: React.FormEvent) => {
@@ -620,6 +659,7 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             return a.name.localeCompare(b.name);
         });
 
+    // 1. Calculate General Stats (Top Table)
     const studentStats = studentsInClass.map(s => {
         let h = 0, i = 0, sk = 0, tk = 0;
         filteredRecords.forEach(r => {
@@ -643,90 +683,155 @@ const AdminDashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     const totalPages = Math.ceil(studentStats.length / absenItemsPerPage);
     const paginatedStudents = studentStats.slice((absenPage - 1) * absenItemsPerPage, absenPage * absenItemsPerPage);
 
-    return (
-        <NeoCard title="Rekap Absensi Siswa">
-             <div className="flex flex-wrap items-end gap-2 mb-6">
-                <div className="w-[150px]">
-                    <NeoSelect value={absenFilter.type} onChange={e => { setAbsenFilter({...absenFilter, type: e.target.value}); setAbsenPage(1); }} className="mb-0">
-                        <option value="harian">Harian</option>
-                        <option value="bulanan">Bulanan</option>
-                        <option value="range">Rentang Waktu</option>
-                    </NeoSelect>
-                </div>
-                <div className="w-[180px]">
-                     <NeoSelect value={absenFilter.class} onChange={e => { setAbsenFilter({...absenFilter, class: e.target.value}); setAbsenPage(1); }} className="mb-0">
-                        <option value="">Semua Kelas</option>
-                        {sortedClassesDropdown.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                    </NeoSelect>
-                </div>
-                {absenFilter.type === 'harian' && (
-                    <div className="w-[180px]">
-                         <NeoInput type="date" value={absenFilter.date} onChange={e => setAbsenFilter({...absenFilter, date: e.target.value})} className="mb-0" />
-                    </div>
-                )}
-                {absenFilter.type === 'bulanan' && (
-                    <div className="w-[200px]">
-                         <NeoInput type="month" value={absenFilter.month} onChange={e => setAbsenFilter({...absenFilter, month: e.target.value})} className="mb-0" />
-                    </div>
-                )}
-                {absenFilter.type === 'range' && (
-                    <div className="flex gap-2 items-center">
-                        <div className="w-[140px]">
-                             <input type="date" className="w-full border-3 border-black p-2 font-bold" value={absenFilter.startDate} onChange={e => setAbsenFilter({...absenFilter, startDate: e.target.value})} />
-                        </div>
-                        <span className="font-black">-</span>
-                        <div className="w-[140px]">
-                             <input type="date" className="w-full border-3 border-black p-2 font-bold" value={absenFilter.endDate} onChange={e => setAbsenFilter({...absenFilter, endDate: e.target.value})} />
-                        </div>
-                    </div>
-                )}
-            </div>
-            
-            {/* Total Stats Summary */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <div className="bg-neo-green border-3 border-black p-3 shadow-neo flex flex-col items-center justify-center transform -rotate-1">
-                    <span className="text-xs font-black uppercase tracking-widest text-black">Total Hadir</span>
-                    <span className="text-3xl font-black text-black">{totalH}</span>
-                </div>
-                <div className="bg-neo-blue border-3 border-black p-3 shadow-neo flex flex-col items-center justify-center transform rotate-1">
-                    <span className="text-xs font-black uppercase tracking-widest text-black">Total Izin</span>
-                    <span className="text-3xl font-black text-black">{totalI}</span>
-                </div>
-                <div className="bg-neo-yellow border-3 border-black p-3 shadow-neo flex flex-col items-center justify-center transform -rotate-1">
-                    <span className="text-xs font-black uppercase tracking-widest text-black">Total Sakit</span>
-                    <span className="text-3xl font-black text-black">{totalS}</span>
-                </div>
-                <div className="bg-neo-orange border-3 border-black p-3 shadow-neo flex flex-col items-center justify-center transform rotate-1">
-                    <span className="text-xs font-black uppercase tracking-widest text-white">Tanpa Ket.</span>
-                    <span className="text-3xl font-black text-white">{totalTK}</span>
-                </div>
-            </div>
 
-            <div className="flex gap-2 mb-4">
-                 <NeoButton variant="success" onClick={() => handleExportAbsenPDF(studentStats)} className="px-4 py-2 text-sm">PDF</NeoButton>
-                 <NeoButton variant="secondary" className="bg-neo-yellow px-4 py-2 text-sm" onClick={() => handleExportAbsenExcel(studentStats)}>Excel</NeoButton>
-            </div>
-            <NeoTable headers={['No', 'NISN', 'Nama', 'Kelas', 'H', 'I', 'S', 'TK', '%']}>
-                {paginatedStudents.map((s, idx) => (
-                    <tr key={s.id} className="border-b-2 border-black hover:bg-blue-50 text-sm font-bold">
-                        <td className="p-3 border-r-2 border-black">{(absenPage - 1) * absenItemsPerPage + idx + 1}</td>
-                        <td className="p-3 border-r-2 border-black whitespace-nowrap">{s.nisn}</td>
-                        <td className="p-3 border-r-2 border-black min-w-[150px]">{s.name}</td>
-                        <td className="p-3 border-r-2 border-black">{s.class}</td>
-                        <td className="p-3 border-r-2 border-black text-green-600">{s.h}</td>
-                        <td className="p-3 border-r-2 border-black text-blue-600">{s.i}</td>
-                        <td className="p-3 border-r-2 border-black text-orange-600">{s.sk}</td>
-                        <td className="p-3 border-r-2 border-black text-red-600">{s.tk}</td>
-                        <td className="p-3">{s.percentage}%</td>
-                    </tr>
-                ))}
-            </NeoTable>
-            <div className="flex justify-between md:justify-end items-center gap-2 mt-6">
-                <button disabled={absenPage === 1} onClick={() => setAbsenPage(p => p - 1)} className="px-4 py-2 bg-white border-3 border-black disabled:opacity-50 font-black text-sm shadow-neo">Prev</button>
-                <span className="font-black text-sm bg-black text-white px-2 py-1">PAGE {absenPage}/{totalPages || 1}</span>
-                <button disabled={absenPage >= totalPages} onClick={() => setAbsenPage(p => p + 1)} className="px-4 py-2 bg-white border-3 border-black disabled:opacity-50 font-black text-sm shadow-neo">Next</button>
-            </div>
-        </NeoCard>
+    // 2. Prepare Data for "Detail Ketidakhadiran" Table (Bottom Table)
+    const absenceDetails: { nisn: string, name: string, class: string, status: string, date: string }[] = [];
+    
+    filteredRecords.forEach(record => {
+        record.students.forEach(student => {
+            if (student.status !== 'hadir') {
+                absenceDetails.push({
+                    nisn: student.nisn,
+                    name: student.name,
+                    class: record.class,
+                    status: student.status,
+                    date: record.date
+                });
+            }
+        });
+    });
+
+    // Sort Detailed Absences: Class (1A-6B) -> Name (A-Z)
+    absenceDetails.sort((a, b) => {
+         const classCompare = a.class.localeCompare(b.class, undefined, { numeric: true, sensitivity: 'base' });
+         if (classCompare !== 0) return classCompare;
+         return a.name.localeCompare(b.name);
+    });
+
+    // Pagination for Detail Table
+    const totalDetailPages = Math.ceil(absenceDetails.length / absenItemsPerPage);
+    const paginatedDetails = absenceDetails.slice((detailAbsenPage - 1) * absenItemsPerPage, detailAbsenPage * absenItemsPerPage);
+
+
+    return (
+        <div className="space-y-8">
+            <NeoCard title="Rekap Absensi Siswa">
+                 <div className="flex flex-wrap items-end gap-2 mb-6">
+                    <div className="w-[150px]">
+                        <NeoSelect value={absenFilter.type} onChange={e => { setAbsenFilter({...absenFilter, type: e.target.value}); setAbsenPage(1); setDetailAbsenPage(1); }} className="mb-0">
+                            <option value="harian">Harian</option>
+                            <option value="bulanan">Bulanan</option>
+                            <option value="range">Rentang Waktu</option>
+                        </NeoSelect>
+                    </div>
+                    <div className="w-[180px]">
+                         <NeoSelect value={absenFilter.class} onChange={e => { setAbsenFilter({...absenFilter, class: e.target.value}); setAbsenPage(1); setDetailAbsenPage(1); }} className="mb-0">
+                            <option value="">Semua Kelas</option>
+                            {sortedClassesDropdown.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                        </NeoSelect>
+                    </div>
+                    {absenFilter.type === 'harian' && (
+                        <div className="w-[180px]">
+                             <NeoInput type="date" value={absenFilter.date} onChange={e => setAbsenFilter({...absenFilter, date: e.target.value})} className="mb-0" />
+                        </div>
+                    )}
+                    {absenFilter.type === 'bulanan' && (
+                        <div className="w-[200px]">
+                             <NeoInput type="month" value={absenFilter.month} onChange={e => setAbsenFilter({...absenFilter, month: e.target.value})} className="mb-0" />
+                        </div>
+                    )}
+                    {absenFilter.type === 'range' && (
+                        <div className="flex gap-2 items-center">
+                            <div className="w-[140px]">
+                                 <input type="date" className="w-full border-3 border-black p-2 font-bold" value={absenFilter.startDate} onChange={e => setAbsenFilter({...absenFilter, startDate: e.target.value})} />
+                            </div>
+                            <span className="font-black">-</span>
+                            <div className="w-[140px]">
+                                 <input type="date" className="w-full border-3 border-black p-2 font-bold" value={absenFilter.endDate} onChange={e => setAbsenFilter({...absenFilter, endDate: e.target.value})} />
+                            </div>
+                        </div>
+                    )}
+                </div>
+                
+                {/* Total Stats Summary */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div className="bg-neo-green border-3 border-black p-3 shadow-neo flex flex-col items-center justify-center transform -rotate-1">
+                        <span className="text-xs font-black uppercase tracking-widest text-black">Total Hadir</span>
+                        <span className="text-3xl font-black text-black">{totalH}</span>
+                    </div>
+                    <div className="bg-neo-blue border-3 border-black p-3 shadow-neo flex flex-col items-center justify-center transform rotate-1">
+                        <span className="text-xs font-black uppercase tracking-widest text-black">Total Izin</span>
+                        <span className="text-3xl font-black text-black">{totalI}</span>
+                    </div>
+                    <div className="bg-neo-yellow border-3 border-black p-3 shadow-neo flex flex-col items-center justify-center transform -rotate-1">
+                        <span className="text-xs font-black uppercase tracking-widest text-black">Total Sakit</span>
+                        <span className="text-3xl font-black text-black">{totalS}</span>
+                    </div>
+                    <div className="bg-neo-orange border-3 border-black p-3 shadow-neo flex flex-col items-center justify-center transform rotate-1">
+                        <span className="text-xs font-black uppercase tracking-widest text-white">Tanpa Ket.</span>
+                        <span className="text-3xl font-black text-white">{totalTK}</span>
+                    </div>
+                </div>
+
+                <div className="flex gap-2 mb-4">
+                     <NeoButton variant="success" onClick={() => handleExportAbsenPDF(studentStats)} className="px-4 py-2 text-sm">PDF</NeoButton>
+                     <NeoButton variant="secondary" className="bg-neo-yellow px-4 py-2 text-sm" onClick={() => handleExportAbsenExcel(studentStats)}>Excel</NeoButton>
+                </div>
+                <NeoTable headers={['No', 'NISN', 'Nama', 'Kelas', 'H', 'I', 'S', 'TK', '%']}>
+                    {paginatedStudents.map((s, idx) => (
+                        <tr key={s.id} className="border-b-2 border-black hover:bg-blue-50 text-sm font-bold">
+                            <td className="p-3 border-r-2 border-black">{(absenPage - 1) * absenItemsPerPage + idx + 1}</td>
+                            <td className="p-3 border-r-2 border-black whitespace-nowrap">{s.nisn}</td>
+                            <td className="p-3 border-r-2 border-black min-w-[150px]">{s.name}</td>
+                            <td className="p-3 border-r-2 border-black">{s.class}</td>
+                            <td className="p-3 border-r-2 border-black text-green-600">{s.h}</td>
+                            <td className="p-3 border-r-2 border-black text-blue-600">{s.i}</td>
+                            <td className="p-3 border-r-2 border-black text-orange-600">{s.sk}</td>
+                            <td className="p-3 border-r-2 border-black text-red-600">{s.tk}</td>
+                            <td className="p-3">{s.percentage}%</td>
+                        </tr>
+                    ))}
+                </NeoTable>
+                <div className="flex justify-between md:justify-end items-center gap-2 mt-6">
+                    <button disabled={absenPage === 1} onClick={() => setAbsenPage(p => p - 1)} className="px-4 py-2 bg-white border-3 border-black disabled:opacity-50 font-black text-sm shadow-neo">Prev</button>
+                    <span className="font-black text-sm bg-black text-white px-2 py-1">PAGE {absenPage}/{totalPages || 1}</span>
+                    <button disabled={absenPage >= totalPages} onClick={() => setAbsenPage(p => p + 1)} className="px-4 py-2 bg-white border-3 border-black disabled:opacity-50 font-black text-sm shadow-neo">Next</button>
+                </div>
+            </NeoCard>
+
+            <NeoCard title="Detail Ketidakhadiran">
+                <div className="flex gap-2 mb-4 justify-end">
+                     <NeoButton variant="success" onClick={() => handleExportDetailAbsenPDF(absenceDetails)} className="px-4 py-2 text-sm">PDF</NeoButton>
+                     <NeoButton variant="secondary" className="bg-neo-yellow px-4 py-2 text-sm" onClick={() => handleExportDetailAbsenExcel(absenceDetails)}>Excel</NeoButton>
+                </div>
+                <NeoTable headers={['No', 'NISN', 'Nama', 'Kelas', 'Status']}>
+                    {paginatedDetails.map((detail, idx) => (
+                        <tr key={idx} className="border-b-2 border-black hover:bg-gray-50 text-sm font-bold">
+                            <td className="p-3 border-r-2 border-black">{(detailAbsenPage - 1) * absenItemsPerPage + idx + 1}</td>
+                            <td className="p-3 border-r-2 border-black whitespace-nowrap">{detail.nisn}</td>
+                            <td className="p-3 border-r-2 border-black min-w-[200px]">{detail.name}</td>
+                            <td className="p-3 border-r-2 border-black">{detail.class}</td>
+                            <td className="p-3 border-r-2 border-black">
+                                <span className={`px-2 py-1 text-xs font-black uppercase border border-black inline-block 
+                                    ${detail.status === 'izin' ? 'bg-neo-blue text-black' : 
+                                      detail.status === 'sakit' ? 'bg-neo-yellow text-black' : 
+                                      'bg-neo-orange text-white'}`}>
+                                    {detail.status === 'tanpaKet' ? 'Tanpa Ket.' : 
+                                     detail.status === 'izin' ? 'Izin' : 
+                                     detail.status === 'sakit' ? 'Sakit' : detail.status}
+                                </span>
+                            </td>
+                        </tr>
+                    ))}
+                    {paginatedDetails.length === 0 && <tr><td colSpan={5} className="p-4 text-center text-gray-400 font-bold">Tidak ada data ketidakhadiran.</td></tr>}
+                </NeoTable>
+                <div className="flex justify-between md:justify-end items-center gap-2 mt-6">
+                    <button disabled={detailAbsenPage === 1} onClick={() => setDetailAbsenPage(p => p - 1)} className="px-4 py-2 bg-white border-3 border-black disabled:opacity-50 font-black text-sm shadow-neo">Prev</button>
+                    <span className="font-black text-sm bg-black text-white px-2 py-1">PAGE {detailAbsenPage}/{totalDetailPages || 1}</span>
+                    <button disabled={detailAbsenPage >= totalDetailPages} onClick={() => setDetailAbsenPage(p => p + 1)} className="px-4 py-2 bg-white border-3 border-black disabled:opacity-50 font-black text-sm shadow-neo">Next</button>
+                </div>
+            </NeoCard>
+        </div>
     );
   };
 
